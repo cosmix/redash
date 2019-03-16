@@ -1,3 +1,5 @@
+const DRAG_PLACEHOLDER_SELECTOR = '.grid-stack-placeholder';
+
 function createNewDashboardByAPI(name) {
   cy.server();
   return cy.request('POST', 'api/dashboards', { name }).then((response) => {
@@ -72,6 +74,29 @@ function addWidget(queryData = {}) {
       const body = Cypress._.get(xhr, 'response.body');
       assert.isDefined(body, 'Widget api call returns response body');
       return body;
+    });
+}
+
+function dragBy(wrapper, offset) {
+  let start;
+  let end;
+  return wrapper
+    .then(($el) => {
+      start = $el.offset();
+      return wrapper
+        .trigger('mousedown', { which: 1, pageX: start.left , pageY: start.top })
+        .trigger('mousemove', { which: 1, pageX: start.left + (offset.left || 0), pageY: start.top + (offset.top || 0) });
+    }).then(($el) => {
+      // getting end position from placeholder instead of $el
+      // cause on mouseup, $el animates back to position
+      // and this is simpler than waiting for animationend
+      end = Cypress.$(DRAG_PLACEHOLDER_SELECTOR).offset();
+      return wrapper.trigger('mouseup');
+    }).then(() => {
+      return {
+        left: end.left - start.left,
+        top: end.top - start.top,
+      };
     });
 }
 
@@ -176,6 +201,86 @@ describe('Dashboard', () => {
       });
 
       cy.get('@textboxEl').should('contain', newContent);
+    });
+  });
+
+  describe('Draggable widgets', () => {
+    const gutter = 15;
+    const colWidth = 200;
+
+    beforeEach(function () {
+      cy.viewport(gutter + 6 * colWidth, 800);
+      createNewDashboardByAPI('Foo Bar')
+        .then((slug) => {
+          cy.visit(`/dashboard/${slug}`);
+          addTextbox('Hello World!').as('textboxEl');
+        });
+    });
+
+    describe('Column snap', () => {
+      beforeEach(function () {
+        editDashboard();
+      });
+
+      it('stays put when dragged under snap threshold', () => {
+        dragBy(cy.get('@textboxEl'), { left: 90 }).then((delta) => {
+          expect(delta.left).to.eq(0);
+        });
+      });
+
+      it('moves one column dragged over snap threshold', () => {
+        dragBy(cy.get('@textboxEl'), { left: 110 }).then((delta) => {
+          expect(delta.left).to.eq(200);
+        });
+      });
+
+      it('moves 2 column dragged over snap threshold', () => {
+        dragBy(cy.get('@textboxEl'), { left: 330 }).then((delta) => {
+          expect(delta.left).to.eq(400);
+        });
+      });
+    });
+
+    it('discards drag on cancel', () =>{
+      let start;
+      cy.get('@textboxEl')
+        // save initial position, drag textbox 1 col
+        .then(($el) => {
+          start = $el.offset();
+          editDashboard();
+          return dragBy(cy.get('@textboxEl'), { left: 200 })
+        })
+        // cancel
+        .then((delta) => {
+          cy.get('.dashboard-header').within(() => {
+            cy.contains('button', 'Cancel').click();
+          });
+          return cy.get('@textboxEl');
+        })
+        // verify returned to original position
+        .then(($el) => {
+          expect($el.offset()).to.deep.eq(start);
+        });
+    });
+
+    it('saves drag on apply', () =>{
+      let start;
+      cy.get('@textboxEl')
+        // save initial position, drag textbox 1 col
+        .then(($el) => {
+          start = $el.offset();
+          editDashboard();
+          return dragBy(cy.get('@textboxEl'), { left: 200 })
+        })
+        // apply
+        .then((delta) => {
+          cy.contains('button', 'Apply Changes').click();
+          return cy.get('@textboxEl');
+        })
+        // verify returned to original position
+        .then(($el) => {
+          expect($el.offset()).to.not.deep.eq(start);
+        });
     });
   });
 
