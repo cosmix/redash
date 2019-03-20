@@ -1,13 +1,13 @@
 import debug from 'debug';
-import { matchesUA, resolveUserAgent } from 'browserslist-useragent';
 import PromiseRejectionError from '@/lib/promise-rejection-error';
 import { ErrorHandler } from './error-handler';
 import template from './template.html';
 
-if (!matchesUA(navigator.userAgent, { allowHigherVersions: true })) {
-  // TODO: create "browser outdated" page and redirect to it
-  console.log('Your browser is outdated', resolveUserAgent(navigator.userAgent));
-}
+// TODO: create "browser outdated" page and redirect to it
+// import { matchesUA, resolveUserAgent } from 'browserslist-useragent';
+// if (!matchesUA(navigator.userAgent, { allowHigherVersions: true })) {
+//   console.log('Your browser is outdated', resolveUserAgent(navigator.userAgent));
+// }
 
 const logger = debug('redash:app-view');
 
