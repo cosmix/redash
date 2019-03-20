@@ -1,10 +1,11 @@
+from collections import defaultdict
 from redash.query_runner import *
 from redash.utils import json_dumps, json_loads
+import re
 
 import logging
 logger = logging.getLogger(__name__)
 
-from collections import defaultdict
 
 try:
     from pyhive import presto
@@ -96,16 +97,26 @@ class Presto(BaseQueryRunner):
 
     def run_query(self, query, user):
         connection = presto.connect(
-                host=self.configuration.get('host', ''),
-                port=self.configuration.get('port', 8080),
-                protocol=self.configuration.get('protocol', 'http'),
-                username=self.configuration.get('username', 'redash'),
-                catalog=self.configuration.get('catalog', 'hive'),
-                schema=self.configuration.get('schema', 'default'))
+            host=self.configuration.get('host', ''),
+            port=self.configuration.get('port', 8080),
+            protocol=self.configuration.get('protocol', 'http'),
+            username=self.configuration.get('username', 'redash'),
+            catalog=self.configuration.get('catalog', 'hive'),
+            schema=self.configuration.get('schema', 'default'))
 
         cursor = connection.cursor()
 
+        max_rows = self.configuration.get('presto.max_rows_in_result', 0)
 
+        if max_rows > 0:
+            if 'limit' in query or 'LIMIT' in query:
+                # let's update the limit clause to something acceptable.
+                match = re.match('LIMIT (\d+)', query, re.I)
+                if match:
+                    query = query[:match.start()] + " " + str(max_rows) + " " + query[match.end():]
+            else:
+                # let's add the limit to the end of the query.
+                query += " LIMIT {}".format(max_rows)
         try:
             cursor.execute(query)
             column_tuples = [(i[0], PRESTO_TYPES_MAPPING.get(i[1], None)) for i in cursor.description]
@@ -133,5 +144,6 @@ class Presto(BaseQueryRunner):
                 error = unicode(error)
 
         return json_data, error
+
 
 register(Presto)
